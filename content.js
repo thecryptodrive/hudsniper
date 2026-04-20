@@ -46,45 +46,32 @@ function getLeverageInput() {
 }
 
 function getEntryInput() {
-    // Entry price is labeled "Price(USDT)" at the TOP - NOT in TP/SL section
+    // Entry price is labeled "Price(USDT)" - must NOT contain "profit" or "loss"
     const labels = document.querySelectorAll('label, div');
     for (const label of labels) {
         const text = label.textContent?.trim() || '';
-        // Must be "Price(USDT)" but NOT contain "profit" or "loss"
+        // Must match "Price(USDT)" exactly or contain both "Price" and "USDT"
+        // But must NOT contain "profit", "loss", "take", or "stop"
         if ((text === 'Price(USDT)' || (text.includes('Price') && text.includes('USDT'))) && 
-            !text.includes('profit') && !text.includes('loss')) {
+            !text.toLowerCase().includes('profit') && 
+            !text.toLowerCase().includes('loss') &&
+            !text.toLowerCase().includes('take') &&
+            !text.toLowerCase().includes('stop')) {
             
-            let container = label.closest('.detrade-form-item, [class*="form-item"]') || label.parentElement;
+            // Get the immediate parent container with the input
+            let container = label.closest('.detrade-form-item, [class*="form-item"]');
+            if (!container) {
+                // Try to find the sibling input container
+                container = label.parentElement;
+            }
+            
             if (container) {
                 const input = container.querySelector('input[inputmode="decimal"], input[type="text"]');
                 if (input && input.offsetParent !== null) {
-                    console.log('✅ Found Entry Price input');
+                    console.log('✅ Found Entry Price input with label:', text);
                     return input;
                 }
             }
-        }
-    }
-    
-    // Fallback: First input with inputmode="decimal" that's NOT in TP/SL section
-    const allInputs = document.querySelectorAll('input[inputmode="decimal"]');
-    for (const input of allInputs) {
-        let parent = input.parentElement;
-        let inTPSL = false;
-        let depth = 0;
-        
-        while (parent && depth < 10) {
-            const text = parent.textContent?.toLowerCase() || '';
-            if (text.includes('take profit') || text.includes('stop loss')) {
-                inTPSL = true;
-                break;
-            }
-            parent = parent.parentElement;
-            depth++;
-        }
-        
-        if (!inTPSL && input.offsetParent !== null) {
-            console.log('✅ Found Entry Price input (fallback)');
-            return input;
         }
     }
     

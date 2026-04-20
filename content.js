@@ -7,6 +7,7 @@ const SIGNAL_STABILITY_MS = 5000;
 let autofillWindowActive = false;
 let autofillWindowExpiry = 0;
 let lastClickedInputElement = null;
+let countdownInterval = null;
 
 // Track clicks on input fields
 document.addEventListener('click', (e) => {
@@ -15,6 +16,39 @@ document.addEventListener('click', (e) => {
         console.log('📍 Input clicked:', e.target);
     }
 });
+
+// === CONFIGURATION ===
+const CONFIG = {
+  leverage: 125,
+  windowDuration: 30000,
+};
+
+// === UTILITY: ROBUST INPUT SIMULATION ===
+function setInputElementValue(input, value) {
+  if (!input) return false;
+  
+  input.focus();
+  input.value = '';
+  
+  const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+  if (nativeSetter) {
+    nativeSetter.call(input, value);
+  } else {
+    input.value = value;
+  }
+
+  const inputEvent = new Event('input', { bubbles: true });
+  const changeEvent = new Event('change', { bubbles: true });
+  
+  input.dispatchEvent(inputEvent);
+  input.dispatchEvent(changeEvent);
+  
+  setTimeout(() => {
+    input.blur();
+  }, 100);
+
+  return true;
+}
 
 // ==================== MARKET DATA ====================
 function getMarketData() {
@@ -343,8 +377,9 @@ async function autofillLevEntry() {
         if (!isChecked) {
             console.log('✅ TP/SL checkbox found, enabling it...');
             tpslCheckbox.click();
-            await new Promise(r => setTimeout(r, 300));
-            console.log('✅ TP/SL checkbox enabled');
+            // Wait longer for UI to expand and stabilize
+            await new Promise(r => setTimeout(r, 800));
+            console.log('✅ TP/SL checkbox enabled, UI expanded');
         } else {
             console.log('ℹ️ TP/SL checkbox already checked');
         }
@@ -352,7 +387,7 @@ async function autofillLevEntry() {
         console.warn('⚠️ TP/SL checkbox not found');
     }
 
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise(r => setTimeout(r, 300));
 
     // Step 1: Fill LEVERAGE
     const levInput = getLeverageInput();
@@ -368,12 +403,18 @@ async function autofillLevEntry() {
         console.error('❌ Leverage input NOT FOUND!');
     }
 
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 400));
 
-    // Step 2: Fill ENTRY PRICE
+    // Step 2: Fill ENTRY PRICE - Re-query after leverage to ensure DOM is stable
+    console.log('🔍 Searching for Entry Price input...');
     const entryInput = getEntryInput();
     if (entryInput) {
-        console.log('💰 Found entry price input, setting to:', currentSignal.entry);
+        console.log('💰 Found entry price input:', entryInput);
+        console.log('   - ID:', entryInput.id);
+        console.log('   - Placeholder:', entryInput.placeholder);
+        console.log('   - Type:', entryInput.type);
+        console.log('   - Setting to:', currentSignal.entry);
+        
         const entrySuccess = await setVal(entryInput, currentSignal.entry);
         if (entrySuccess) {
             console.log(`✅ Entry price set successfully: ${currentSignal.entry}`);
@@ -382,6 +423,10 @@ async function autofillLevEntry() {
         }
     } else {
         console.error('❌ Entry price input NOT FOUND!');
+        console.log('📋 Debug: Available inputs on page:');
+        document.querySelectorAll('input').forEach((inp, idx) => {
+            console.log(`   ${idx}: id="${inp.id}", placeholder="${inp.placeholder}", type="${inp.type}", visible=${inp.offsetParent !== null}`);
+        });
     }
 
     // Activate 30-second window
@@ -390,6 +435,11 @@ async function autofillLevEntry() {
     
     console.log('⏱️ [LEV+ENTRY] 30-second window activated');
     
+    // Clear any existing countdown
+    if (window.activeCountdown) {
+        clearInterval(window.activeCountdown);
+    }
+    
     // Button feedback
     const btn = document.getElementById('lev-entry-btn');
     if (btn) {
@@ -397,11 +447,12 @@ async function autofillLevEntry() {
         btn.style.background = "#ffa500";
         btn.disabled = true;
         
-        // Start countdown
-        const countdownInterval = setInterval(() => {
+        // Start countdown using global reference
+        window.activeCountdown = setInterval(() => {
             const remaining = Math.ceil((autofillWindowExpiry - Date.now()) / 1000);
             if (remaining <= 0) {
-                clearInterval(countdownInterval);
+                clearInterval(window.activeCountdown);
+                window.activeCountdown = null;
                 autofillWindowActive = false;
                 if (btn) {
                     btn.innerText = "LEV + ENTRY";

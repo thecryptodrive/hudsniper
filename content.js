@@ -3,6 +3,19 @@ let currentSignal = null;
 let signalLockTime = 0;
 const SIGNAL_STABILITY_MS = 5000;
 
+// ==================== NEW THREE-BUTTON SYSTEM ====================
+let autofillWindowActive = false;
+let autofillWindowExpiry = 0;
+let lastClickedInputElement = null;
+
+// Track clicks on input fields
+document.addEventListener('click', (e) => {
+    if (e.target.tagName === 'INPUT' && e.target.type === 'text') {
+        lastClickedInputElement = e.target;
+        console.log('📍 Input clicked:', e.target);
+    }
+});
+
 // ==================== MARKET DATA ====================
 function getMarketData() {
     try {
@@ -273,52 +286,24 @@ async function showHUD() {
     await renderDashboard(currentSignal);
 }
 
-// ==================== AUTOFILL (MAIN FUNCTION) ====================
-async function autofillBCGame() {
+// ==================== AUTOFILL LEVERAGE + ENTRY (BUTTON 1) ====================
+async function autofillLevEntry() {
     if (!currentSignal) {
         console.error('❌ No signal available');
         await showHUD();
         return;
     }
 
-    console.log('🎯 Starting autofill with signal:', currentSignal);
-
-    // Step 1: Enable TP/SL panel
-    let tpSlEnabled = false;
-    const checkbox = getTPSLCheckbox();
-    
-    if (checkbox) {
-        console.log('📋 Found TP/SL control:', checkbox);
-        
-        const isChecked = checkbox.checked || 
-                         checkbox.getAttribute('aria-checked') === 'true' ||
-                         checkbox.getAttribute('data-checked') === 'true';
-        
-        if (!isChecked) {
-            checkbox.click();
-            checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-            
-            if (checkbox.tagName !== 'INPUT') {
-                const parentCheckbox = checkbox.querySelector('input[type="checkbox"]');
-                if (parentCheckbox) {
-                    parentCheckbox.checked = true;
-                    parentCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-            }
-            
-            console.log('✅ Clicked TP/SL toggle');
-            tpSlEnabled = true;
-        } else {
-            console.log('ℹ️ TP/SL already enabled');
-            tpSlEnabled = true;
-        }
-        
-        await new Promise(r => setTimeout(r, 1000));
-    } else {
-        console.log('⚠️ TP/SL control not found');
+    // Check if window is already active
+    if (autofillWindowActive && Date.now() < autofillWindowExpiry) {
+        const remaining = Math.ceil((autofillWindowExpiry - Date.now()) / 1000);
+        console.log(`⏳ Window still active for ${remaining}s`);
+        return;
     }
 
-    // Step 2: Fill LEVERAGE
+    console.log('🎯 Starting LEV+ENTRY autofill with signal:', currentSignal);
+
+    // Step 1: Fill LEVERAGE
     const levInput = getLeverageInput();
     if (levInput) {
         await setVal(levInput, currentSignal.leverage.toString());
@@ -329,7 +314,7 @@ async function autofillBCGame() {
 
     await new Promise(r => setTimeout(r, 300));
 
-    // Step 3: Fill ENTRY PRICE (the "Price(USDT)" field at top)
+    // Step 2: Fill ENTRY PRICE
     const entryInput = getEntryInput();
     if (entryInput) {
         console.log('💰 Filling ENTRY price:', currentSignal.entry);
@@ -339,67 +324,118 @@ async function autofillBCGame() {
         console.log('❌ Entry price input not found!');
     }
 
-    await new Promise(r => setTimeout(r, 500));
+    // Activate 30-second window
+    autofillWindowActive = true;
+    autofillWindowExpiry = Date.now() + 30000;
+    
+    // Button feedback
+    const btn = document.getElementById('lev-entry-btn');
+    if (btn) {
+        btn.innerText = `⏳ ${30}s`;
+        btn.style.background = "#ffa500";
+        btn.disabled = true;
+        
+        // Start countdown
+        const countdownInterval = setInterval(() => {
+            const remaining = Math.ceil((autofillWindowExpiry - Date.now()) / 1000);
+            if (remaining <= 0) {
+                clearInterval(countdownInterval);
+                autofillWindowActive = false;
+                if (btn) {
+                    btn.innerText = "LEV + ENTRY";
+                    btn.style.background = "";
+                    btn.disabled = false;
+                }
+            } else {
+                btn.innerText = `⏳ ${remaining}s`;
+            }
+        }, 1000);
+    }
+}
 
-    // Step 4: Fill TAKE PROFIT (only if TP/SL is enabled)
+// ==================== AUTOFILL TP ONLY (BUTTON 2) ====================
+async function autofillTP() {
+    if (!currentSignal) {
+        console.error('❌ No signal available');
+        return;
+    }
+
+    // Check if window is active
+    if (!autofillWindowActive || Date.now() >= autofillWindowExpiry) {
+        console.log('❌ 30s window expired. Click LEV+ENTRY first.');
+        alert('⏰ Time window expired!\n\nClick "LEV + ENTRY" button first to activate the 30-second window.');
+        return;
+    }
+
     let tpInput = null;
-    if (tpSlEnabled) {
+    
+    // Try to use last clicked input first
+    if (lastClickedInputElement) {
+        console.log('📍 Using last clicked input for TP');
+        tpInput = lastClickedInputElement;
+    }
+    
+    // Fallback to finding TP input by label
+    if (!tpInput || !tpInput.offsetParent) {
         tpInput = getTPInput();
         if (tpInput) {
-            console.log('🎯 Filling TP:', currentSignal.tp);
-            const success = await setVal(tpInput, currentSignal.tp);
-            if (success) {
-                console.log(`✅ Set TP to: ${currentSignal.tp}`);
-            } else {
-                console.log('⚠️ TP value may not have been set correctly');
-            }
-        } else {
-            console.log('❌ TP input not found! Make sure TP/SL is enabled.');
+            console.log('🎯 Found TP input by label');
         }
     }
 
-    await new Promise(r => setTimeout(r, 300));
+    if (tpInput && tpInput.offsetParent !== null) {
+        console.log('🎯 Filling TP:', currentSignal.tp);
+        const success = await setVal(tpInput, currentSignal.tp);
+        if (success) {
+            console.log(`✅ Set TP to: ${currentSignal.tp}`);
+        } else {
+            console.log('⚠️ TP value may not have been set correctly');
+        }
+    } else {
+        console.log('❌ TP input not found! Click on the TP field first, then press this button.');
+    }
+}
 
-    // Step 5: Fill STOP LOSS (only if TP/SL is enabled)
+// ==================== AUTOFILL SL ONLY (BUTTON 3) ====================
+async function autofillSL() {
+    if (!currentSignal) {
+        console.error('❌ No signal available');
+        return;
+    }
+
+    // Check if window is active
+    if (!autofillWindowActive || Date.now() >= autofillWindowExpiry) {
+        console.log('❌ 30s window expired. Click LEV+ENTRY first.');
+        alert('⏰ Time window expired!\n\nClick "LEV + ENTRY" button first to activate the 30-second window.');
+        return;
+    }
+
     let slInput = null;
-    if (tpSlEnabled) {
+    
+    // Try to use last clicked input first
+    if (lastClickedInputElement) {
+        console.log('📍 Using last clicked input for SL');
+        slInput = lastClickedInputElement;
+    }
+    
+    // Fallback to finding SL input by label
+    if (!slInput || !slInput.offsetParent) {
         slInput = getSLInput();
         if (slInput) {
-            console.log('🛑 Filling SL:', currentSignal.sl);
-            const success = await setVal(slInput, currentSignal.sl);
-            if (success) {
-                console.log(`✅ Set SL to: ${currentSignal.sl}`);
-            } else {
-                console.log('⚠️ SL value may not have been set correctly');
-            }
-        } else {
-            console.log('❌ SL input not found!');
+            console.log('🛑 Found SL input by label');
         }
     }
 
-    // Button feedback
-    const btn = document.getElementById('copy-to-bc');
-    if (btn) {
-        let msg = "✅ STAGED!";
-        let missing = [];
-        
-        if (!levInput) missing.push('LEV');
-        if (!entryInput) missing.push('ENTRY');
-        if (tpSlEnabled && !tpInput) missing.push('TP');
-        if (tpSlEnabled && !slInput) missing.push('SL');
-        
-        if (missing.length > 0) {
-            msg = `⚠️ PARTIAL (missing: ${missing.join(', ')})`;
+    if (slInput && slInput.offsetParent !== null) {
+        console.log('🛑 Filling SL:', currentSignal.sl);
+        const success = await setVal(slInput, currentSignal.sl);
+        if (success) {
+            console.log(`✅ Set SL to: ${currentSignal.sl}`);
+        } else {
+            console.log('⚠️ SL value may not have been set correctly');
         }
-        
-        btn.innerText = msg;
-        btn.style.background = missing.length > 0 ? "#ffa500" : "#00eb81";
-        setTimeout(() => { 
-            if (btn) {
-                btn.innerText = "PREPARE TRADE";
-                btn.style.background = "";
-            }
-        }, 3000);
+    } else {
+        console.log('❌ SL input not found! Click on the SL field first, then press this button.');
     }
 }
 
@@ -457,11 +493,17 @@ async function renderDashboard(t) {
             <span>SL</span>
             <span style="font-weight:700;">${t.sl}</span>
         </div>
-        <button id="copy-to-bc" style="width:100%; margin-top:14px; padding:10px; background:${accentColor}; border:none; border-radius:8px; color:#000; font-weight:700; cursor:pointer; font-size:12px; transition:all 0.2s;">PREPARE TRADE</button>
+        <button id="lev-entry-btn" style="width:100%; margin-top:14px; padding:10px; background:${accentColor}; border:none; border-radius:8px; color:#000; font-weight:700; cursor:pointer; font-size:12px; transition:all 0.2s;">LEV + ENTRY</button>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+            <button id="tp-btn" style="flex:1; padding:8px; background:#00eb81; border:none; border-radius:6px; color:#000; font-weight:600; cursor:pointer; font-size:11px;">TP</button>
+            <button id="sl-btn" style="flex:1; padding:8px; background:#ff3e3e; border:none; border-radius:6px; color:#fff; font-weight:600; cursor:pointer; font-size:11px;">SL</button>
+        </div>
         <button id="refresh-hud" style="width:100%; margin-top:8px; padding:8px; background:#4a5568; border:none; border-radius:8px; color:#fff; font-weight:600; cursor:pointer; font-size:11px;">🔄 Refresh</button>
     `;
 
-    document.getElementById('copy-to-bc').onclick = autofillBCGame;
+    document.getElementById('lev-entry-btn').onclick = autofillLevEntry;
+    document.getElementById('tp-btn').onclick = autofillTP;
+    document.getElementById('sl-btn').onclick = autofillSL;
     document.getElementById('refresh-hud').onclick = async () => {
         console.log('🔄 Refreshing HUD...');
         const data = getMarketData();

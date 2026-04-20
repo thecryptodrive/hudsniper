@@ -59,8 +59,14 @@ function getLeverageInput() {
 }
 
 function getEntryInput() {
-    // Entry price is labeled "Price(USDT)" - must be EXACTLY this text, not containing "profit", "loss", "take", "stop"
-    // Look for labels where the direct text content (not children) contains "Price(USDT)"
+    // Strategy 1: Find by placeholder "Enter the price" (unique to entry field)
+    const entryByPlaceholder = document.querySelector('input[placeholder="Enter the price"]');
+    if (entryByPlaceholder && entryByPlaceholder.offsetParent !== null) {
+        console.log('✅ Found Entry Price input by placeholder');
+        return entryByPlaceholder;
+    }
+    
+    // Strategy 2: Find by label "Price(USDT)" that is NOT inside TP/SL section
     const allLabels = document.querySelectorAll('label');
     
     for (const label of allLabels) {
@@ -326,6 +332,27 @@ async function autofillLevEntry() {
     }
 
     console.log('🎯 [LEV+ENTRY] Starting with signal:', currentSignal);
+
+    // Step 0: Check and enable TP/SL checkbox if unchecked
+    const tpslCheckbox = getTPSLCheckbox();
+    if (tpslCheckbox) {
+        const isChecked = tpslCheckbox.getAttribute('aria-checked') === 'true' || 
+                         tpslCheckbox.getAttribute('data-checked') === 'true' ||
+                         tpslCheckbox.checked;
+        
+        if (!isChecked) {
+            console.log('✅ TP/SL checkbox found, enabling it...');
+            tpslCheckbox.click();
+            await new Promise(r => setTimeout(r, 300));
+            console.log('✅ TP/SL checkbox enabled');
+        } else {
+            console.log('ℹ️ TP/SL checkbox already checked');
+        }
+    } else {
+        console.warn('⚠️ TP/SL checkbox not found');
+    }
+
+    await new Promise(r => setTimeout(r, 200));
 
     // Step 1: Fill LEVERAGE
     const levInput = getLeverageInput();

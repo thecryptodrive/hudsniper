@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "BC Sniper Pro",
+  "version": "1.0",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["*://bc.game/*"],
+  "action": {
+    "default_popup": "settings.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://bc.game/trading/contract*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

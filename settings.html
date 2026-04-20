@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { width: 220px; padding: 15px; font-family: sans-serif; background: #ececec; color: #333; }
+    h3 { margin: 0 0 15px 0; font-size: 16px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+    label { font-size: 11px; font-weight: bold; display: block; margin-bottom: 3px; color: #666; }
+    input { width: 100%; padding: 6px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    button { width: 100%; padding: 10px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+    button:hover { background: #000; }
+    .row { display: flex; gap: 10px; }
+  </style>
+</head>
+<body>
+  <h3>Sniper HUD Config</h3>
+  
+  <div class="row">
+    <div>
+      <label>Min Lev</label>
+      <input type="number" id="minL" value="50">
+    </div>
+    <div>
+      <label>Max Lev</label>
+      <input type="number" id="maxL" value="200">
+    </div>
+  </div>
+
+  <hr style="border: 0; border-top: 1px solid #ccc; margin: 5px 0 15px 0;">
+
+  <div class="row">
+    <div>
+      <label>Pos X (Left)</label>
+      <input type="number" id="posX" value="20">
+    </div>
+    <div>
+      <label>Pos Y (Top)</label>
+      <input type="number" id="posY" value="20">
+    </div>
+  </div>
+
+  <label>Opacity (0.1 - 1.0)</label>
+  <input type="number" id="opacity" value="0.9" step="0.1" min="0.1" max="1">
+
+  <button id="save">Save Settings</button>
+  <script src="settings.js"></script>
+</body>
+</html>

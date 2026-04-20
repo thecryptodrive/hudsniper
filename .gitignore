@@ -1,5 +1,3 @@
-(content.js is a source file, so no changes needed to .gitignore)
+(content.js is a source file, so no need to add it to .gitignore)
 
-```javascript
-
-```
+# No changes needed - source file modification doesn't require gitignore updates

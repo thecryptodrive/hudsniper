@@ -247,45 +247,52 @@ function getSLInput() {
 }
 
 // ==================== NATIVE VALUE SETTER WITH RETRIES ====================
-const setVal = async (el, val, retries = 2) => {
+const setVal = async (el, val, retries = 1) => {
     if (!el) {
         console.error('❌ setVal: Element is null');
         return false;
     }
     
     console.log(`🔧 setVal: Setting value "${val}" on element`, el);
-    console.log(`🔧 setVal: Element type=${el.type}, inputmode=${el.inputMode}, placeholder=${el.placeholder}`);
     
-    for (let i = 0; i < retries; i++) {
+    // Check if value is already set correctly BEFORE doing anything
+    if (el.value && el.value.toString().trim() === val.toString().trim()) {
+        console.log(`✅ Value already correct: ${val}`);
+        return true;
+    }
+    
+    for (let i = 0; i <= retries; i++) {
         try {
-            // Check if value is already set correctly
-            if (el.value && el.value.toString().trim() === val.toString().trim()) {
-                console.log(`✅ Value already set correctly: ${val}`);
-                return true;
-            }
-            
-            // Clear the field first
+            // Focus and clear
             el.focus();
             el.click();
             
             // Use native setter to clear
             const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-            setter.call(el, '');
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
+            if (setter) {
+                setter.call(el, '');
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            } else {
+                el.value = '';
+            }
+            
+            await new Promise(r => setTimeout(r, 30));
+            
+            // Set the new value
+            if (setter) {
+                setter.call(el, val.toString());
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            } else {
+                el.value = val.toString();
+            }
             
             await new Promise(r => setTimeout(r, 50));
             
-            // Set the new value
-            setter.call(el, val.toString());
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-            
-            await new Promise(r => setTimeout(r, 100));
-            
             // Verify the value was set
             const currentValue = el.value;
-            console.log(`🔍 Verification attempt ${i+1}: Current value="${currentValue}", Expected="${val}"`);
+            console.log(`🔍 Verification: Current="${currentValue}", Expected="${val}"`);
             
             if (currentValue && currentValue.toString().trim() === val.toString().trim()) {
                 console.log(`✅ Value set successfully: ${val}`);
@@ -293,14 +300,17 @@ const setVal = async (el, val, retries = 2) => {
                 return true;
             }
             
-            console.warn(`⚠️ Attempt ${i+1}: Value mismatch. Retrying...`);
+            if (i < retries) {
+                console.warn(`⚠️ Attempt ${i+1} failed, retrying...`);
+                await new Promise(r => setTimeout(r, 100));
+            }
         } catch (e) {
             console.error(`❌ Retry ${i + 1} failed:`, e);
+            if (i < retries) await new Promise(r => setTimeout(r, 100));
         }
-        await new Promise(r => setTimeout(r, 200));
     }
     
-    console.error(`❌ Failed to set value after ${retries} attempts`);
+    console.error(`❌ Failed to set value after ${retries + 1} attempts`);
     return false;
 };
 
@@ -408,9 +418,9 @@ async function autofillLevEntry() {
         console.error('❌ Leverage input NOT FOUND!');
     }
 
-    await new Promise(r => setTimeout(r, 400));
+    await new Promise(r => setTimeout(r, 300));
 
-    // Step 2: Fill ENTRY PRICE - Re-query after leverage to ensure DOM is stable
+    // Step 2: Fill ENTRY PRICE - Click first then fill
     console.log('🔍 Searching for Entry Price input...');
     const entryInput = getEntryInput();
     if (entryInput) {
@@ -418,8 +428,13 @@ async function autofillLevEntry() {
         console.log('   - ID:', entryInput.id);
         console.log('   - Placeholder:', entryInput.placeholder);
         console.log('   - Type:', entryInput.type);
-        console.log('   - Setting to:', currentSignal.entry);
         
+        // Click the input first to ensure it's focused and ready
+        entryInput.click();
+        entryInput.focus();
+        await new Promise(r => setTimeout(r, 150));
+        
+        console.log('   - Setting to:', currentSignal.entry);
         const entrySuccess = await setVal(entryInput, currentSignal.entry);
         if (entrySuccess) {
             console.log(`✅ Entry price set successfully: ${currentSignal.entry}`);

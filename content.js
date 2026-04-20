@@ -46,29 +46,53 @@ function getLeverageInput() {
 }
 
 function getEntryInput() {
-    // Entry price is labeled "Price(USDT)" - must NOT contain "profit" or "loss"
-    const labels = document.querySelectorAll('label, div');
-    for (const label of labels) {
-        const text = label.textContent?.trim() || '';
-        // Must match "Price(USDT)" exactly or contain both "Price" and "USDT"
-        // But must NOT contain "profit", "loss", "take", or "stop"
-        if ((text === 'Price(USDT)' || (text.includes('Price') && text.includes('USDT'))) && 
-            !text.toLowerCase().includes('profit') && 
-            !text.toLowerCase().includes('loss') &&
-            !text.toLowerCase().includes('take') &&
-            !text.toLowerCase().includes('stop')) {
+    // Entry price is labeled "Price(USDT)" - must be EXACTLY this text, not containing "profit", "loss", "take", "stop"
+    // Look for labels where the direct text content (not children) contains "Price(USDT)"
+    const allLabels = document.querySelectorAll('label');
+    
+    for (const label of allLabels) {
+        // Get only the direct text nodes, not text from child elements
+        let directText = '';
+        label.childNodes.forEach(node => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                directText += node.textContent;
+            }
+        });
+        directText = directText.trim();
+        
+        // Check if this is the Entry Price label
+        // It should contain "Price" and "USDT" but NOT be inside a TP/SL section
+        if ((directText.includes('Price') && directText.includes('USDT')) || 
+            directText === 'Price(USDT)') {
             
-            // Get the immediate parent container with the input
+            // Make sure parent doesn't contain TP/SL indicators
+            const parentText = (label.parentElement?.textContent || '').toLowerCase();
+            if (parentText.includes('take profit') || 
+                parentText.includes('stop loss') ||
+                parentText.includes('tp/sl')) {
+                continue; // Skip if we're inside TP/SL section
+            }
+            
+            // Find the associated input
+            const forId = label.getAttribute('for');
+            if (forId) {
+                const input = document.getElementById(forId);
+                if (input && input.offsetParent !== null) {
+                    console.log('✅ Found Entry Price input by ID:', forId);
+                    return input;
+                }
+            }
+            
+            // Fallback: find input in same form item
             let container = label.closest('.detrade-form-item, [class*="form-item"]');
             if (!container) {
-                // Try to find the sibling input container
                 container = label.parentElement;
             }
             
             if (container) {
                 const input = container.querySelector('input[inputmode="decimal"], input[type="text"]');
                 if (input && input.offsetParent !== null) {
-                    console.log('✅ Found Entry Price input with label:', text);
+                    console.log('✅ Found Entry Price input in container');
                     return input;
                 }
             }

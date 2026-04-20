@@ -247,7 +247,7 @@ function getSLInput() {
 }
 
 // ==================== NATIVE VALUE SETTER WITH RETRIES ====================
-const setVal = async (el, val, retries = 5) => {
+const setVal = async (el, val, retries = 2) => {
     if (!el) {
         console.error('❌ setVal: Element is null');
         return false;
@@ -258,6 +258,12 @@ const setVal = async (el, val, retries = 5) => {
     
     for (let i = 0; i < retries; i++) {
         try {
+            // Check if value is already set correctly
+            if (el.value && el.value.toString().trim() === val.toString().trim()) {
+                console.log(`✅ Value already set correctly: ${val}`);
+                return true;
+            }
+            
             // Clear the field first
             el.focus();
             el.click();
@@ -268,21 +274,20 @@ const setVal = async (el, val, retries = 5) => {
             el.dispatchEvent(new Event('input', { bubbles: true }));
             el.dispatchEvent(new Event('change', { bubbles: true }));
             
-            await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 50));
             
-            // Set the new value character by character for React compatibility
+            // Set the new value
             setter.call(el, val.toString());
             el.dispatchEvent(new Event('input', { bubbles: true }));
             el.dispatchEvent(new Event('change', { bubbles: true }));
-            el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
             
-            await new Promise(r => setTimeout(r, 150));
+            await new Promise(r => setTimeout(r, 100));
             
             // Verify the value was set
             const currentValue = el.value;
-            console.log(`🔍 Verification attempt ${i+1}: Current value="${currentValue}", Expected contains="${val.toString().slice(0, 5)}"`);
+            console.log(`🔍 Verification attempt ${i+1}: Current value="${currentValue}", Expected="${val}"`);
             
-            if (currentValue && currentValue.includes(val.toString().slice(0, 5))) {
+            if (currentValue && currentValue.toString().trim() === val.toString().trim()) {
                 console.log(`✅ Value set successfully: ${val}`);
                 el.blur();
                 return true;
@@ -292,7 +297,7 @@ const setVal = async (el, val, retries = 5) => {
         } catch (e) {
             console.error(`❌ Retry ${i + 1} failed:`, e);
         }
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 200));
     }
     
     console.error(`❌ Failed to set value after ${retries} attempts`);
@@ -644,6 +649,11 @@ async function renderDashboard(t) {
 }
 
 const observer = new MutationObserver(() => {
+    // Don't update if we're in the autofill window
+    if (autofillWindowActive && Date.now() < autofillWindowExpiry) {
+        return;
+    }
+    
     try {
         const data = getMarketData();
         if (data && data.price && data.price !== lastPrice) {

@@ -382,6 +382,46 @@ async function autofillLevEntry() {
 
     console.log('🎯 [LEV+ENTRY] Starting with signal:', currentSignal);
 
+    // Load max TP% and SL% settings and apply caps
+    const settings = await chrome.storage.local.get(['maxTpPct', 'maxSlPct']);
+    const maxTpPct = parseFloat(settings.maxTpPct) || 5;
+    const maxSlPct = parseFloat(settings.maxSlPct) || 2;
+    
+    const entryPrice = parseFloat(currentSignal.entry);
+    const isLong = currentSignal.side === 'BUY';
+    
+    // Calculate capped TP and SL
+    let cappedTp, cappedSl;
+    if (isLong) {
+        // Long: TP above entry, SL below entry
+        const maxTp = entryPrice * (1 + maxTpPct / 100);
+        const minSl = entryPrice * (1 - maxSlPct / 100);
+        const originalTp = parseFloat(currentSignal.tp);
+        const originalSl = parseFloat(currentSignal.sl);
+        
+        cappedTp = Math.min(originalTp, maxTp).toFixed(2);
+        cappedSl = Math.max(originalSl, minSl).toFixed(2);
+    } else {
+        // Short: TP below entry, SL above entry
+        const minTp = entryPrice * (1 - maxTpPct / 100);
+        const maxSl = entryPrice * (1 + maxSlPct / 100);
+        const originalTp = parseFloat(currentSignal.tp);
+        const originalSl = parseFloat(currentSignal.sl);
+        
+        cappedTp = Math.max(originalTp, minTp).toFixed(2);
+        cappedSl = Math.min(originalSl, maxSl).toFixed(2);
+    }
+    
+    console.log(`📊 [LEV+ENTRY] TP cap applied: ${maxTpPct}%, SL cap: ${maxSlPct}%`);
+    console.log(`   Original TP: ${currentSignal.tp} → Capped: ${cappedTp}`);
+    console.log(`   Original SL: ${currentSignal.sl} → Capped: ${cappedSl}`);
+    
+    // Store capped values in a temporary variable for TP/SL buttons to use
+    window.cappedSignalValues = {
+        tp: cappedTp,
+        sl: cappedSl
+    };
+
     // Step 0: Check and enable TP/SL checkbox if unchecked
     const tpslCheckbox = getTPSLCheckbox();
     if (tpslCheckbox) {
@@ -521,10 +561,11 @@ async function autofillTP() {
     }
 
     if (tpInput && tpInput.offsetParent !== null) {
-        console.log('💰 [TP] Filling TP value:', currentSignal.tp);
-        const success = await setVal(tpInput, currentSignal.tp);
+        const tpValue = window.cappedSignalValues && window.cappedSignalValues.tp ? window.cappedSignalValues.tp : currentSignal.tp;
+        console.log('💰 [TP] Filling TP value:', tpValue);
+        const success = await setVal(tpInput, tpValue);
         if (success) {
-            console.log(`✅ [TP] Set successfully: ${currentSignal.tp}`);
+            console.log(`✅ [TP] Set successfully: ${tpValue}`);
         } else {
             console.error('❌ [TP] Failed to set value');
             alert('⚠️ TP value could not be set. Make sure you clicked on the TP field first.');
@@ -569,10 +610,11 @@ async function autofillSL() {
     }
 
     if (slInput && slInput.offsetParent !== null) {
-        console.log('🛑 [SL] Filling SL value:', currentSignal.sl);
-        const success = await setVal(slInput, currentSignal.sl);
+        const slValue = window.cappedSignalValues && window.cappedSignalValues.sl ? window.cappedSignalValues.sl : currentSignal.sl;
+        console.log('🛑 [SL] Filling SL value:', slValue);
+        const success = await setVal(slInput, slValue);
         if (success) {
-            console.log(`✅ [SL] Set successfully: ${currentSignal.sl}`);
+            console.log(`✅ [SL] Set successfully: ${slValue}`);
         } else {
             console.error('❌ [SL] Failed to set value');
             alert('⚠️ SL value could not be set. Make sure you clicked on the SL field first.');

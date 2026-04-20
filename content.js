@@ -207,36 +207,55 @@ function getSLInput() {
 }
 
 // ==================== NATIVE VALUE SETTER WITH RETRIES ====================
-const setVal = async (el, val, retries = 3) => {
-    if (!el) return false;
+const setVal = async (el, val, retries = 5) => {
+    if (!el) {
+        console.error('❌ setVal: Element is null');
+        return false;
+    }
+    
+    console.log(`🔧 setVal: Setting value "${val}" on element`, el);
+    console.log(`🔧 setVal: Element type=${el.type}, inputmode=${el.inputMode}, placeholder=${el.placeholder}`);
     
     for (let i = 0; i < retries; i++) {
         try {
+            // Clear the field first
             el.focus();
             el.click();
-            el.value = '';
-            el.dispatchEvent(new Event('input', { bubbles: true }));
             
-            await new Promise(r => setTimeout(r, 50));
-            
+            // Use native setter to clear
             const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-            setter.call(el, val);
+            setter.call(el, '');
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
             
+            await new Promise(r => setTimeout(r, 100));
+            
+            // Set the new value character by character for React compatibility
+            setter.call(el, val.toString());
             el.dispatchEvent(new Event('input', { bubbles: true }));
             el.dispatchEvent(new Event('change', { bubbles: true }));
             el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
-            el.dispatchEvent(new Event('blur', { bubbles: true }));
             
-            await new Promise(r => setTimeout(r, 100));
-            if (el.value.includes(val.toString().slice(0, 5))) {
+            await new Promise(r => setTimeout(r, 150));
+            
+            // Verify the value was set
+            const currentValue = el.value;
+            console.log(`🔍 Verification attempt ${i+1}: Current value="${currentValue}", Expected contains="${val.toString().slice(0, 5)}"`);
+            
+            if (currentValue && currentValue.includes(val.toString().slice(0, 5))) {
                 console.log(`✅ Value set successfully: ${val}`);
+                el.blur();
                 return true;
             }
+            
+            console.warn(`⚠️ Attempt ${i+1}: Value mismatch. Retrying...`);
         } catch (e) {
-            console.warn(`Retry ${i + 1} failed:`, e);
+            console.error(`❌ Retry ${i + 1} failed:`, e);
         }
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 300));
     }
+    
+    console.error(`❌ Failed to set value after ${retries} attempts`);
     return false;
 };
 
@@ -288,45 +307,61 @@ async function showHUD() {
 
 // ==================== AUTOFILL LEVERAGE + ENTRY (BUTTON 1) ====================
 async function autofillLevEntry() {
+    console.log('🎯 [LEV+ENTRY] Button clicked!');
+    
     if (!currentSignal) {
-        console.error('❌ No signal available');
+        console.error('❌ [LEV+ENTRY] No signal available, generating one...');
         await showHUD();
-        return;
+        if (!currentSignal) {
+            alert('❌ Could not generate signal. Please refresh the page.');
+            return;
+        }
     }
 
     // Check if window is already active
     if (autofillWindowActive && Date.now() < autofillWindowExpiry) {
         const remaining = Math.ceil((autofillWindowExpiry - Date.now()) / 1000);
-        console.log(`⏳ Window still active for ${remaining}s`);
+        console.log(`⏳ [LEV+ENTRY] Window still active for ${remaining}s`);
         return;
     }
 
-    console.log('🎯 Starting LEV+ENTRY autofill with signal:', currentSignal);
+    console.log('🎯 [LEV+ENTRY] Starting with signal:', currentSignal);
 
     // Step 1: Fill LEVERAGE
     const levInput = getLeverageInput();
     if (levInput) {
-        await setVal(levInput, currentSignal.leverage.toString());
-        console.log(`✅ Set leverage to: ${currentSignal.leverage}`);
+        console.log('💪 Found leverage input, setting to:', currentSignal.leverage);
+        const levSuccess = await setVal(levInput, currentSignal.leverage.toString());
+        if (levSuccess) {
+            console.log(`✅ Leverage set successfully: ${currentSignal.leverage}`);
+        } else {
+            console.error('❌ Failed to set leverage');
+        }
     } else {
-        console.log('❌ Leverage input not found!');
+        console.error('❌ Leverage input NOT FOUND!');
     }
 
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 500));
 
     // Step 2: Fill ENTRY PRICE
     const entryInput = getEntryInput();
     if (entryInput) {
-        console.log('💰 Filling ENTRY price:', currentSignal.entry);
-        await setVal(entryInput, currentSignal.entry);
-        console.log(`✅ Set entry price to: ${currentSignal.entry}`);
+        console.log('💰 Found entry price input, setting to:', currentSignal.entry);
+        const entrySuccess = await setVal(entryInput, currentSignal.entry);
+        if (entrySuccess) {
+            console.log(`✅ Entry price set successfully: ${currentSignal.entry}`);
+        } else {
+            console.error('❌ Failed to set entry price');
+        }
     } else {
-        console.log('❌ Entry price input not found!');
+        console.error('❌ Entry price input NOT FOUND!');
     }
 
     // Activate 30-second window
     autofillWindowActive = true;
     autofillWindowExpiry = Date.now() + 30000;
+    
+    console.log('⏱️ [LEV+ENTRY] 30-second window activated');
     
     // Button feedback
     const btn = document.getElementById('lev-entry-btn');
@@ -346,6 +381,7 @@ async function autofillLevEntry() {
                     btn.style.background = "";
                     btn.disabled = false;
                 }
+                console.log('⏱️ [LEV+ENTRY] Window expired');
             } else {
                 btn.innerText = `⏳ ${remaining}s`;
             }
@@ -355,14 +391,17 @@ async function autofillLevEntry() {
 
 // ==================== AUTOFILL TP ONLY (BUTTON 2) ====================
 async function autofillTP() {
+    console.log('🎯 [TP] Button clicked!');
+    
     if (!currentSignal) {
-        console.error('❌ No signal available');
+        console.error('❌ [TP] No signal available');
+        alert('❌ No signal available. Click "Refresh" first.');
         return;
     }
 
     // Check if window is active
     if (!autofillWindowActive || Date.now() >= autofillWindowExpiry) {
-        console.log('❌ 30s window expired. Click LEV+ENTRY first.');
+        console.log('❌ [TP] 30s window expired. Click LEV+ENTRY first.');
         alert('⏰ Time window expired!\n\nClick "LEV + ENTRY" button first to activate the 30-second window.');
         return;
     }
@@ -370,42 +409,47 @@ async function autofillTP() {
     let tpInput = null;
     
     // Try to use last clicked input first
-    if (lastClickedInputElement) {
-        console.log('📍 Using last clicked input for TP');
+    if (lastClickedInputElement && lastClickedInputElement.offsetParent !== null) {
+        console.log('📍 [TP] Using last clicked input:', lastClickedInputElement);
         tpInput = lastClickedInputElement;
     }
     
     // Fallback to finding TP input by label
-    if (!tpInput || !tpInput.offsetParent) {
+    if (!tpInput) {
         tpInput = getTPInput();
         if (tpInput) {
-            console.log('🎯 Found TP input by label');
+            console.log('🎯 [TP] Found TP input by label');
         }
     }
 
     if (tpInput && tpInput.offsetParent !== null) {
-        console.log('🎯 Filling TP:', currentSignal.tp);
+        console.log('💰 [TP] Filling TP value:', currentSignal.tp);
         const success = await setVal(tpInput, currentSignal.tp);
         if (success) {
-            console.log(`✅ Set TP to: ${currentSignal.tp}`);
+            console.log(`✅ [TP] Set successfully: ${currentSignal.tp}`);
         } else {
-            console.log('⚠️ TP value may not have been set correctly');
+            console.error('❌ [TP] Failed to set value');
+            alert('⚠️ TP value could not be set. Make sure you clicked on the TP field first.');
         }
     } else {
-        console.log('❌ TP input not found! Click on the TP field first, then press this button.');
+        console.error('❌ [TP] Input not found!');
+        alert('❌ TP input not found!\n\n1. Click on the Take Profit price field\n2. Then press this button again');
     }
 }
 
 // ==================== AUTOFILL SL ONLY (BUTTON 3) ====================
 async function autofillSL() {
+    console.log('🛑 [SL] Button clicked!');
+    
     if (!currentSignal) {
-        console.error('❌ No signal available');
+        console.error('❌ [SL] No signal available');
+        alert('❌ No signal available. Click "Refresh" first.');
         return;
     }
 
     // Check if window is active
     if (!autofillWindowActive || Date.now() >= autofillWindowExpiry) {
-        console.log('❌ 30s window expired. Click LEV+ENTRY first.');
+        console.log('❌ [SL] 30s window expired. Click LEV+ENTRY first.');
         alert('⏰ Time window expired!\n\nClick "LEV + ENTRY" button first to activate the 30-second window.');
         return;
     }
@@ -413,29 +457,31 @@ async function autofillSL() {
     let slInput = null;
     
     // Try to use last clicked input first
-    if (lastClickedInputElement) {
-        console.log('📍 Using last clicked input for SL');
+    if (lastClickedInputElement && lastClickedInputElement.offsetParent !== null) {
+        console.log('📍 [SL] Using last clicked input:', lastClickedInputElement);
         slInput = lastClickedInputElement;
     }
     
     // Fallback to finding SL input by label
-    if (!slInput || !slInput.offsetParent) {
+    if (!slInput) {
         slInput = getSLInput();
         if (slInput) {
-            console.log('🛑 Found SL input by label');
+            console.log('🛑 [SL] Found SL input by label');
         }
     }
 
     if (slInput && slInput.offsetParent !== null) {
-        console.log('🛑 Filling SL:', currentSignal.sl);
+        console.log('🛑 [SL] Filling SL value:', currentSignal.sl);
         const success = await setVal(slInput, currentSignal.sl);
         if (success) {
-            console.log(`✅ Set SL to: ${currentSignal.sl}`);
+            console.log(`✅ [SL] Set successfully: ${currentSignal.sl}`);
         } else {
-            console.log('⚠️ SL value may not have been set correctly');
+            console.error('❌ [SL] Failed to set value');
+            alert('⚠️ SL value could not be set. Make sure you clicked on the SL field first.');
         }
     } else {
-        console.log('❌ SL input not found! Click on the SL field first, then press this button.');
+        console.error('❌ [SL] Input not found!');
+        alert('❌ SL input not found!\n\n1. Click on the Stop Loss price field\n2. Then press this button again');
     }
 }
 
